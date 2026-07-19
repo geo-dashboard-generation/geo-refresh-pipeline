@@ -87,12 +87,16 @@ runs:
         PYTHONPATH: ${{ github.action_path }}/src
       run: |
         set -uo pipefail
+        # GitHub runs composite `run` steps under `bash -e`, which would abort
+        # the step on the pipeline's non-zero exit before we can inspect it.
+        set +e
         # The pipeline writes its own key=value outputs into $GITHUB_OUTPUT.
         python -m geo_refresh run "${{ inputs.config }}" \
           --log-format "${{ inputs.log-format }}" \
           --summary "$GITHUB_OUTPUT" \
           ${{ inputs.args }}
         code=$?
+        set -e
         # Exit code 3 means "nothing changed upstream", which is a normal,
         # successful outcome for a scheduled refresh — not a build failure.
         if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then

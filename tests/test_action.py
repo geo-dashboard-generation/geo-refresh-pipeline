@@ -136,6 +136,9 @@ def test_action_treats_exit_code_three_as_success(action: dict[str, Any]) -> Non
         step["run"] for step in action["runs"]["steps"] if step.get("id") == "refresh"
     )
     assert '"$code" -ne 3' in script
+    # GitHub runs composite steps under `bash -e`; the script must opt out
+    # around the pipeline call or exit code 3 would abort the step.
+    assert "set +e" in script and "set -e" in script
     assert "--summary" in script and "GITHUB_OUTPUT" in script
 
 
