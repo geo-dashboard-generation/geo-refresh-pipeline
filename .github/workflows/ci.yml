@@ -69,3 +69,39 @@ jobs:
         run: python -m pytest -q tests/test_sql_optional.py
         env:
           PYTHONPATH: src
+
+  action:
+    name: Composite action
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Scaffold a pipeline to refresh
+        run: |
+          python -m pip install -r requirements.txt
+          PYTHONPATH=src python -m geo_refresh init workspace
+
+      - name: First run — data is new, so it changed
+        id: first
+        uses: ./
+        with:
+          config: pipeline.yml
+          working-directory: workspace
+
+      - name: Second run — nothing moved
+        id: second
+        uses: ./
+        with:
+          config: pipeline.yml
+          working-directory: workspace
+
+      - name: Assert the outputs
+        run: |
+          set -euo pipefail
+          test "${{ steps.first.outputs.changed }}" = "true"
+          test "${{ steps.first.outputs.stale }}" = "false"
+          test "${{ steps.first.outputs.feature-count }}" = "20"
+          test "${{ steps.first.outputs.exit-code }}" = "0"
+          test "${{ steps.second.outputs.changed }}" = "false"
+          test "${{ steps.second.outputs.exit-code }}" = "3"
+          test -f "${{ steps.first.outputs.manifest-path }}"
