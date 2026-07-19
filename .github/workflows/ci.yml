@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run test suite
+        run: python -m pytest -q
+
+      - name: Check the pipeline runs end to end
+        run: |
+          set -euo pipefail
+          python -m geo_refresh init smoke
+          python -m geo_refresh validate smoke/pipeline.yml
+          python -m geo_refresh run smoke/pipeline.yml
+          # A second run must detect no change and exit 3.
+          set +e
+          python -m geo_refresh run smoke/pipeline.yml
+          second=$?
+          set -e
+          if [ "$second" -ne 3 ]; then
+            echo "expected exit code 3 (no-change) on the second run, got $second" >&2
+            exit 1
+          fi
+          python -m geo_refresh status smoke/build/manifest.json
+        env:
+          PYTHONPATH: src
+
+  no-sqlalchemy:
+    name: Works without SQLAlchemy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install without the optional sql extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pydantic PyYAML httpx pytest
+      - name: Confirm the sql source degrades with a clear message
+        run: python -m pytest -q tests/test_sql_optional.py
+        env:
+          PYTHONPATH: src

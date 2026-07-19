@@ -1,0 +1,64 @@
+# geo-refresh-pipeline example.
+#
+#   python -m geo_refresh validate pipeline.yml
+#   python -m geo_refresh run pipeline.yml
+#
+# Run it twice: the second run exits 3 (no-change) and rewrites nothing.
+version: 1
+
+manifest: build/manifest.json
+state: build/.geo-refresh-state.json
+
+defaults:
+  timeout: 30s
+  retries: 3
+  retry_backoff: 500
+  max_age: 24h
+
+sources:
+  # A local CSV, mapped into Point features by column name.
+  - name: air_quality_stations
+    path: data/stations.csv
+    format: csv
+    id_property: station_id
+    max_age: 6h
+    min_features: 5
+    mapping:
+      geometry:
+        type: point
+        lon: longitude
+        lat: latitude
+      properties: "*"
+    transform:
+      - filter: "status == 'active' and pm25 >= 0"
+      - select: [station_id, city, country, pm25, status]
+      - rename: {pm25: pm25_ug_m3}
+      - round: 5
+      - drop_invalid: true
+    outputs:
+      - geojson: build/air_quality_stations.geojson
+      - summary: build/air_quality_stations.summary.json
+
+  # An HTTP source is configured the same way. Uncomment and point it at a real
+  # feed; ${TOKEN} is read from the environment at fetch time, never stored here.
+  #
+  # - name: live_incidents
+  #   url: https://example.org/api/incidents
+  #   format: json
+  #   id_property: incident_id
+  #   max_age: 15m
+  #   headers:
+  #     Authorization: "Bearer ${INCIDENTS_TOKEN}"
+  #   mapping:
+  #     records: "$.data.incidents"
+  #     geometry:
+  #       type: point
+  #       lon: lon
+  #       lat: lat
+  #     properties: [incident_id, kind, reported_at]
+  #   outputs:
+  #     - geojson: build/live_incidents.geojson
+
+outputs:
+  - geojson: build/all_features.geojson
+  # - build: "python scripts/render_map.py"

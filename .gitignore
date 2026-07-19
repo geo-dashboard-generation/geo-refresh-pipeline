@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Pipeline artifacts and run state
+manifest.json
+.geo-refresh-state.json
+smoke/
+
+# Environment
+.env
+.env.*
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

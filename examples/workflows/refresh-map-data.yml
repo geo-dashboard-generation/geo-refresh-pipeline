@@ -1,0 +1,84 @@
+# A complete scheduled refresh workflow built on the composite action in this
+# repository's root action.yml.
+#
+# It lives under examples/ rather than .github/workflows/ on purpose: dropped
+# into .github/workflows/ here it would run nightly against a pipeline this
+# repository does not own. Copy it into the repository that holds your map data,
+# adjust the paths, and it works as written.
+#
+# The test suite parses this file to check it stays in sync with action.yml.
+
+name: Refresh map data
+
+on:
+  schedule:
+    # 04:15 UTC every day. Pick an off-the-hour minute: GitHub's scheduler is
+    # busiest on the hour and delays cron jobs that pile up there.
+    - cron: '15 4 * * *'
+  # Lets an upstream system trigger a refresh immediately, e.g. from a database
+  # webhook: POST /repos/<owner>/<repo>/dispatches {"event_type":"data-changed"}
+  repository_dispatch:
+    types: [data-changed]
+  workflow_dispatch:
+
+concurrency:
+  group: refresh-map-data
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.refresh.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refresh
+        id: refresh
+        uses: geo-dashboard-generation/geo-refresh-pipeline@v1
+        with:
+          config: pipeline.yml
+          python-version: '3.12'
+          log-format: json
+        env:
+          # Referenced from the config as ${INCIDENTS_TOKEN}.
+          INCIDENTS_TOKEN: ${{ secrets.INCIDENTS_TOKEN }}
+
+      - name: Report
+        run: |
+          echo "changed=${{ steps.refresh.outputs.changed }}"
+          echo "stale=${{ steps.refresh.outputs.stale }}"
+          echo "features=${{ steps.refresh.outputs.feature-count }}"
+
+      # Everything below only runs when the content hash actually moved, so an
+      # unchanged upstream costs one short job and produces no commit.
+      - name: Commit regenerated artifacts
+        if: steps.refresh.outputs.changed == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add build/
+          git commit -m "Refresh map data (${{ steps.refresh.outputs.feature-count }} features)"
+          git push
+
+      - name: Upload Pages artifact
+        if: steps.refresh.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build
+
+  deploy:
+    needs: refresh
+    if: needs.refresh.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

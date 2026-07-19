@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Stale-data badge</title>
+  <link rel="stylesheet" href="freshness-badge.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 3rem 1.5rem;
+      font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #1c1f24;
+      background: #fff;
+    }
+    main { max-width: 44rem; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin: 0 0 0.5rem; }
+    p { color: #4a5058; }
+    .map-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid #e3e6ea;
+      margin-bottom: 1.5rem;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { color: #e6e9ee; background: #14161a; }
+      p { color: #a7aeb8; }
+      .map-header { border-color: #2a2e35; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="map-header">
+      <h1>Air quality stations</h1>
+      <div id="data-freshness"></div>
+    </div>
+    <p>
+      The badge above reads <code>build/manifest.json</code> and recomputes the
+      age in the browser, so it goes stale on its own if the page is left open.
+    </p>
+  </main>
+
+  <script src="freshness-badge.js"></script>
+  <script>
+    geoRefreshBadge.mount({
+      el: '#data-freshness',
+      manifest: 'build/manifest.json',
+      refreshMs: 30000,
+      reloadMs: 300000
+    });
+  </script>
+</body>
+</html>

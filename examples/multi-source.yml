@@ -1,0 +1,104 @@
+# A pipeline that pulls from all three source types at once.
+#
+# It is deliberately not runnable as-is (the HTTP endpoint and the database are
+# placeholders for your own), but it validates without touching the network:
+#
+#   python -m geo_refresh validate examples/multi-source.yml
+version: 1
+
+manifest: build/manifest.json
+state: build/.geo-refresh-state.json
+
+defaults:
+  timeout: 45s
+  retries: 4
+  retry_backoff: 750       # first retry waits up to 0.75s, then 1.5s, 3s, ...
+  retry_max_backoff: 20s
+  max_age: 12h
+
+sources:
+  # 1. A GeoJSON feed over HTTP, with a bearer token pulled from the environment.
+  - name: district_boundaries
+    type: http
+    url: https://data.example.org/v2/districts.geojson
+    format: geojson
+    id_property: district_code
+    max_age: 7d              # boundaries move rarely; a week old is fine
+    min_features: 1
+    headers:
+      Authorization: "Bearer ${BOUNDARIES_TOKEN}"
+      Accept: application/geo+json
+    transform:
+      # Boundary polygons are the biggest thing on the wire; 5 decimal places is
+      # about a metre, which is far more than a web map can show.
+      - round: 5
+      - select: [district_code, name, population]
+      - drop_invalid: true
+    outputs:
+      - geojson: build/districts.geojson
+      - summary: build/districts.summary.json
+
+  # 2. A JSON API whose records are nested and use lon/lat columns.
+  - name: live_incidents
+    type: http
+    url: https://data.example.org/v2/incidents
+    method: GET
+    format: json
+    id_property: incident_id
+    max_age: 15m             # a quarter of an hour old and the badge warns
+    params:
+      status: open
+      limit: "500"
+    headers:
+      Authorization: "Bearer ${INCIDENTS_TOKEN:-}"
+    mapping:
+      records: "$.data.incidents"
+      geometry:
+        type: point
+        lon: longitude
+        lat: latitude
+      properties: [incident_id, category, severity, reported_at]
+      id: incident_id
+    transform:
+      - filter: "severity in ['high', 'critical'] and category != 'test'"
+      - rename: {reported_at: reported}
+      - round: 5
+    outputs:
+      - geojson: build/incidents.geojson
+
+  # 3. A PostGIS table. Needs SQLAlchemy plus the relevant driver;
+  #    without it the run fails with an install hint rather than a traceback.
+  - name: depots
+    type: sql
+    url: "postgresql+psycopg://${PGUSER}:${PGPASSWORD}@${PGHOST:-localhost}:5432/logistics"
+    format: json
+    id_property: depot_id
+    max_age: 24h
+    query: |
+      SELECT depot_id,
+             name,
+             ST_X(location::geometry) AS lon,
+             ST_Y(location::geometry) AS lat,
+             capacity_pallets
+      FROM depots
+      WHERE decommissioned_at IS NULL
+      ORDER BY depot_id
+    mapping:
+      geometry:
+        type: point
+        lon: lon
+        lat: lat
+      properties: [depot_id, name, capacity_pallets]
+    transform:
+      - filter: "capacity_pallets > 0"
+    outputs:
+      - geojson: build/depots.geojson
+
+# Pipeline-level outputs run once, over every source's features merged together,
+# and only when at least one source changed.
+outputs:
+  - geojson: build/all_features.geojson
+    indent: 0
+  - summary: build/all_features.summary.json
+  - build: "python scripts/render_map.py --input build --output site"
+    timeout: 10m

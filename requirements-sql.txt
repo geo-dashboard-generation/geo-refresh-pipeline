@@ -1,0 +1,2 @@
+# Optional: only needed for `type: sql` sources.
+SQLAlchemy>=2.0,<3.0

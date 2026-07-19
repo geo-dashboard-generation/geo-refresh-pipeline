@@ -1,0 +1,88 @@
+/*
+ * Styling for the geo-refresh-pipeline stale-data badge.
+ *
+ * The badge sets `data-state` to fresh | stale | failed | unknown, so you can
+ * restyle it entirely by targeting that attribute. Colours below meet WCAG AA
+ * contrast against their own backgrounds in both light and dark schemes.
+ */
+
+.geo-refresh-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.3em 0.7em;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font: 500 0.8125rem/1.3 system-ui, -apple-system, "Segoe UI", sans-serif;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.geo-refresh-badge__icon {
+  font-size: 0.7em;
+  line-height: 1;
+}
+
+.geo-refresh-badge[data-state="fresh"] {
+  background: #e8f5ec;
+  border-color: #a8d5b8;
+  color: #17552f;
+}
+
+.geo-refresh-badge[data-state="stale"] {
+  background: #fdf3e0;
+  border-color: #e6c47a;
+  color: #6b4708;
+}
+
+.geo-refresh-badge[data-state="failed"] {
+  background: #fdeceb;
+  border-color: #e8a9a4;
+  color: #7a1f18;
+}
+
+.geo-refresh-badge[data-state="unknown"] {
+  background: #f1f2f4;
+  border-color: #cfd3d9;
+  color: #4a5058;
+}
+
+@media (prefers-color-scheme: dark) {
+  .geo-refresh-badge[data-state="fresh"] {
+    background: #12291b;
+    border-color: #2f6b45;
+    color: #9fe0b8;
+  }
+
+  .geo-refresh-badge[data-state="stale"] {
+    background: #2e2410;
+    border-color: #7d6222;
+    color: #f0cf8a;
+  }
+
+  .geo-refresh-badge[data-state="failed"] {
+    background: #2e1512;
+    border-color: #7d3730;
+    color: #f0aaa2;
+  }
+
+  .geo-refresh-badge[data-state="unknown"] {
+    background: #1e2024;
+    border-color: #3d4249;
+    color: #b4bac2;
+  }
+}
+
+/* The stale and failed states also pulse gently, so a dashboard left on a wall
+   display draws the eye when its data stops refreshing. */
+@media (prefers-reduced-motion: no-preference) {
+  .geo-refresh-badge[data-state="stale"] .geo-refresh-badge__icon,
+  .geo-refresh-badge[data-state="failed"] .geo-refresh-badge__icon {
+    animation: geo-refresh-badge-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes geo-refresh-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}

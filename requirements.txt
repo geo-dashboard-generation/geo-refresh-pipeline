@@ -1,0 +1,4 @@
+# Runtime dependencies. SQLAlchemy is optional and lives in requirements-sql.txt.
+pydantic>=2.7,<3.0
+PyYAML>=6.0,<7.0
+httpx>=0.27,<0.29

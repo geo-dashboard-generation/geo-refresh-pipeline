@@ -1,0 +1,109 @@
+name: 'Geo Refresh Pipeline'
+description: >-
+  Run a declarative geo-refresh pipeline: fetch map data, transform and validate
+  it, detect whether anything actually changed, regenerate artifacts and write a
+  freshness manifest. Sets a `changed` output so later steps only run on a real
+  change.
+author: 'geo-dashboard.com'
+
+branding:
+  icon: 'refresh-cw'
+  color: 'green'
+
+inputs:
+  config:
+    description: 'Path to the pipeline YAML file, relative to working-directory.'
+    required: true
+    default: 'pipeline.yml'
+  python-version:
+    description: 'Python version to set up for the run.'
+    required: false
+    default: '3.12'
+  working-directory:
+    description: 'Directory to run the pipeline from.'
+    required: false
+    default: '.'
+  args:
+    description: >-
+      Extra arguments appended to the `run` command, e.g. "--force" or
+      "--only bike_stations --skip-build".
+    required: false
+    default: ''
+  log-format:
+    description: 'Log format on stderr: text or json.'
+    required: false
+    default: 'json'
+  install-sql-extra:
+    description: 'Install SQLAlchemy so `sql` sources work. Set to "true" if you use one.'
+    required: false
+    default: 'false'
+  fail-on-stale:
+    description: 'Fail the step if any source is past its max_age after the run.'
+    required: false
+    default: 'false'
+
+outputs:
+  changed:
+    description: '"true" when at least one source produced different content.'
+    value: ${{ steps.refresh.outputs.changed }}
+  stale:
+    description: '"true" when at least one source is past its configured max_age.'
+    value: ${{ steps.refresh.outputs.stale }}
+  manifest-path:
+    description: 'Absolute path to the manifest.json that was written.'
+    value: ${{ steps.refresh.outputs.manifest-path }}
+  feature-count:
+    description: 'Total number of features across all sources.'
+    value: ${{ steps.refresh.outputs.feature-count }}
+  exit-code:
+    description: >-
+      Raw pipeline exit code: 0 changed, 3 no change, 4 fetch failure,
+      5 validation failure, 6 config error, 7 output failure.
+    value: ${{ steps.refresh.outputs.exit-code }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install pipeline dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        python -m pip install --upgrade pip
+        python -m pip install -r "${GITHUB_ACTION_PATH}/requirements.txt"
+        if [ "${{ inputs.install-sql-extra }}" = "true" ]; then
+          python -m pip install 'SQLAlchemy>=2.0,<3.0'
+        fi
+
+    - name: Run refresh pipeline
+      id: refresh
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/src
+      run: |
+        set -uo pipefail
+        # The pipeline writes its own key=value outputs into $GITHUB_OUTPUT.
+        python -m geo_refresh run "${{ inputs.config }}" \
+          --log-format "${{ inputs.log-format }}" \
+          --summary "$GITHUB_OUTPUT" \
+          ${{ inputs.args }}
+        code=$?
+        # Exit code 3 means "nothing changed upstream", which is a normal,
+        # successful outcome for a scheduled refresh — not a build failure.
+        if [ "$code" -ne 0 ] && [ "$code" -ne 3 ]; then
+          echo "::error::geo-refresh exited with code $code" >&2
+          exit "$code"
+        fi
+        exit 0
+
+    - name: Check freshness
+      if: ${{ inputs.fail-on-stale == 'true' && steps.refresh.outputs.stale == 'true' }}
+      shell: bash
+      run: |
+        echo "::error::At least one source is past its configured max_age." >&2
+        exit 1
